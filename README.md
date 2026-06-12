@@ -168,7 +168,9 @@ quieter courses the default is plenty.
 
 ## Knobs (`TTB.config.<x> = ...` in the console)
 
-- `apiTurbo` (or the `turbo` checkbox) · `apiPollEveryMs` (50)
+- `apiTurbo` (or the `turbo` checkbox) · `apiPollEveryMs` (100 — direct-poll
+  interval; floor is your round-trip latency, so ~100ms is near-optimal at half
+  the request volume of 50ms. Tune live: `TTB.config.apiPollEveryMs = N`.)
 
 - `fireTimeServer` — default `18:59:59.0` (server clock), ~1s before release.
   That's enough margin to absorb clock-sync uncertainty (~±90ms) and be
