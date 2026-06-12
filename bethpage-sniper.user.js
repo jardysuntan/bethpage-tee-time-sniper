@@ -187,6 +187,8 @@
     apiInterval: null,
     timesUrl: null,         // the page's real /booking/times URL, sniffed from fetch/XHR
     apiHit: false,
+    pageFetchCount: 0,      // how many real /times fetches the PAGE has fired since fire (diagnostic)
+    ownFetch: false,        // true only during the bot's own turbo poll, so it isn't counted as a page fetch
     uiInterval: null,
     attemptErr: null,
     preBookErr: null,
@@ -318,7 +320,7 @@
       const of = window.fetch;
       if (of && !of.__ttb) {
         window.fetch = function (input) {
-          try { const u = typeof input === 'string' ? input : input && input.url; if (u && re.test(u)) S.timesUrl = u; } catch (e) { /* ignore */ }
+          try { const u = typeof input === 'string' ? input : input && input.url; if (u && re.test(u)) { S.timesUrl = u; if (!S.ownFetch) S.pageFetchCount++; } } catch (e) { /* ignore */ }
           return of.apply(this, arguments);
         };
         window.fetch.__ttb = true;
@@ -328,7 +330,7 @@
       const oo = XMLHttpRequest.prototype.open;
       if (oo && !oo.__ttb) {
         XMLHttpRequest.prototype.open = function (method, url) {
-          try { if (url && re.test(url)) S.timesUrl = url; } catch (e) { /* ignore */ }
+          try { if (url && re.test(url)) { S.timesUrl = url; S.pageFetchCount++; } } catch (e) { /* ignore */ }
           return oo.apply(this, arguments);
         };
         XMLHttpRequest.prototype.open.__ttb = true;
@@ -357,7 +359,10 @@
     if (!S.timesUrl) warnOnce('API turbo is ON but no times URL captured yet - the first search click will trigger one.');
     S.apiInterval = setInterval(function () {
       if (S.state !== 'searching' || !S.timesUrl) return;
-      fetch(S.timesUrl, { credentials: 'include', cache: 'no-store' })
+      S.ownFetch = true;
+      let _poll;
+      try { _poll = fetch(S.timesUrl, { credentials: 'include', cache: 'no-store' }); } finally { S.ownFetch = false; }
+      _poll
         .then(function (r) { return r.text(); })
         .then(function (txt) {
           if (S.state !== 'searching') return;
@@ -552,6 +557,7 @@
     setState('searching');
     S.firedAt = Date.now();
     S.searchClicks = 0;
+    S.pageFetchCount = 0;
     S.apiHit = false;
     log('FIRE - server clock ' + fmtClock(serverNow()) + (CONFIG.apiTurbo ? ' [API turbo ON]' : ''), 'big');
     if (document.hidden) log('THIS TAB IS IN THE BACKGROUND - timers are throttled. CLICK INTO THIS TAB NOW.', 'err');
@@ -595,7 +601,7 @@
     }
     if (!clicked) warnOnce('No search/refresh control found - check CONFIG.searchClickSelectors / refreshClickSelectors!');
     S.searchClicks++;
-    if (S.searchClicks <= 3 || S.searchClicks % 10 === 0) log('searching… attempt ' + S.searchClicks + ' (+' + sinceFire() + ')');
+    if (S.searchClicks <= 3 || S.searchClicks % 10 === 0) log('searching… attempt ' + S.searchClicks + ' · ' + S.pageFetchCount + ' data-fetches (+' + sinceFire() + ')');
   }
 
   function tileSpots(el) {
