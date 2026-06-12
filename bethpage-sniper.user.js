@@ -1121,7 +1121,7 @@
 
   function selfCheck() {
     const tz = (Intl.DateTimeFormat().resolvedOptions() || {}).timeZone || 'unknown';
-    if (!/New_York/.test(tz)) log('Heads up: this machine’s timezone is ' + tz + ', not America/New_York. Times are interpreted in the MACHINE timezone.', 'warn');
+    if (!/New_York/.test(tz)) log('Timezone: this machine is ' + tz + ', not America/New_York. The FIRE time is read on THIS machine’s clock — simplest fix: set the Mac to Eastern, then 18:59:59.0 = 7:00 PM ET. (from/to/ideal match the tee times shown on the page, so leave those as the Eastern times you want.)', 'warn');
     let found = 0;
     for (const sel of CONFIG.searchClickSelectors) found += document.querySelectorAll(sel).length;
     log('selector check: search control -> ' + found + ' match(es)' + (found ? '' : '  <-- FIX BEFORE 7PM'), found ? undefined : 'err');
