@@ -75,6 +75,22 @@ test('benign "error" text in the modal body never aborts a good booking', async 
   expect(st.booked[0].label).toBe(times[0]);
 });
 
+test('Bethpage Black realism: holds the slot within a 500ms window of release', async ({ page, request }) => {
+  // Simulates a slot that is grabbable for only 500ms after the 7:00:00
+  // release - if the bot's hold lands later, it's gone. Proves the
+  // MutationObserver attacks the instant the tile renders, not on a poll tick.
+  const { times } = await configure(request, { releaseInMs: 4000, holdWindowMs: 500 });
+  await inject(page, { searchEveryMs: 250 });
+  await armAndWaitFor(page, { fire: fmtFire(Date.now() + 1500), earliest: '6:00am', latest: '6:00pm' });
+
+  const st = await getState(request);
+  // Booking times[0] at all proves the hold beat the 500ms window - a late
+  // hold is rejected server-side as "no longer available".
+  expect(st.booked).toHaveLength(1);
+  expect(st.booked[0].label).toBe(times[0]);
+  expect(st.booked[0].at - st.releaseAtMs).toBeLessThan(800); // hold(<500) + reserve roundtrip
+});
+
 test('falls back to the next tile when the first is sniped', async ({ page, request }) => {
   const { times } = await configure(request, { releaseInMs: 2000, snipeFirst: 1 });
   await inject(page);

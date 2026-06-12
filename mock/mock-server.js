@@ -29,6 +29,7 @@ function reset(overrides) {
     clockSkewMs: 0,        // server clock = real clock + skew
     releaseInMs: 5000,     // times open this many ms after config
     teeTimes: null,        // [{mins, spots}] or null for generated default
+    holdWindowMs: 0,       // Black-style: a slot is grabbable only this long after release
     snipeFirst: 0,         // first N times fail at hold ("no longer available")
     bookFailFirst: 0,      // first N times fail at reserve
     expireFirst: 0,        // first N times reserve as "hold has expired"
@@ -243,6 +244,11 @@ const server = http.createServer(async (req, res) => {
     const labels = allTimes().map((t) => t.label);
     const idx = labels.indexOf(body.label);
     if (idx === -1 || idx < cfg.snipeFirst || booked.some((b) => b.label === body.label)) {
+      return json(res, { ok: false, error: 'That tee time is no longer available.' });
+    }
+    // Black-style contention: the slot is gone in milliseconds unless your
+    // hold lands inside the window (or you already hold it).
+    if (cfg.holdWindowMs && (!hold || hold.label !== body.label) && serverNow() - cfg.releaseAtMs > cfg.holdWindowMs) {
       return json(res, { ok: false, error: 'That tee time is no longer available.' });
     }
     if (cfg.holdExclusive && holdLive() && hold.label !== body.label) {
