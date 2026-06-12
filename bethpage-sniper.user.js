@@ -69,9 +69,11 @@
     // --- what to book ---
     earliest: '5:00am',            // [UI] accept tee times from...
     latest: '8:00pm',              // [UI] ...to (inclusive)
+    idealTime: '12:00pm',          // [UI] aim for this time - grab the OPEN slot closest to it
+                                   //      within from/to. Blank = use `preference` instead.
     desiredPlayers: 4,             // [UI] players to select in the modal
     minPlayers: 1,                 // skip slots that can't seat this many
-    preference: 'earliest',        // 'earliest' | 'latest' within the window
+    preference: 'earliest',        // when idealTime is blank: 'earliest' | 'latest' within the window
     maxFailsPerSlot: 2,            // give up on a slot after this many errors
     dryRun: false,                 // [UI] stop one click short of booking
 
@@ -459,6 +461,11 @@
     if (parseAmPm(CONFIG.earliest) == null || parseAmPm(CONFIG.latest) == null) {
       log('Bad earliest/latest time - use e.g. "6:00am".', 'err'); return;
     }
+    if (CONFIG.idealTime && parseAmPm(CONFIG.idealTime) == null) {
+      log('Ideal time "' + CONFIG.idealTime + '" not understood - ignoring it (will take the earliest in your window).', 'warn');
+    } else if (CONFIG.idealTime) {
+      log('Targeting ' + CONFIG.idealTime + ' - will grab the OPEN slot closest to it within ' + CONFIG.earliest + '-' + CONFIG.latest + '.');
+    }
     S.failCounts.clear();
     S.fireAtLocal = f.fireAtLocal;
     let lead = S.fireAtLocal - Date.now();
@@ -606,7 +613,11 @@
       if (spots != null && spots < CONFIG.minPlayers) continue;
       out.push({ el: card, label: label, mins: mins });
     }
-    out.sort(function (a, b) { return CONFIG.preference === 'latest' ? b.mins - a.mins : a.mins - b.mins; });
+    const ideal = parseAmPm(CONFIG.idealTime);
+    out.sort(function (a, b) {
+      if (ideal != null) { return Math.abs(a.mins - ideal) - Math.abs(b.mins - ideal) || a.mins - b.mins; }
+      return CONFIG.preference === 'latest' ? b.mins - a.mins : a.mins - b.mins;
+    });
     return out;
   }
 
@@ -938,6 +949,7 @@
     const fire = textInput('ttb-fire', CONFIG.fireTimeServer, '105px');
     const earliest = textInput('ttb-earliest', CONFIG.earliest, '70px');
     const latest = textInput('ttb-latest', CONFIG.latest, '70px');
+    const ideal = textInput('ttb-ideal', CONFIG.idealTime, '70px');
     const players = el('select', { background: '#0c0d10', color: '#e8e8e8', border: '1px solid #444', borderRadius: '4px', font: 'inherit' }, { id: 'ttb-players' });
     for (let i = 1; i <= 4; i++) players.appendChild(el('option', null, { value: String(i), textContent: String(i), selected: i === CONFIG.desiredPlayers }));
     const dry = el('input', null, { id: 'ttb-dry', type: 'checkbox', checked: CONFIG.dryRun });
@@ -953,6 +965,7 @@
     row.appendChild(field('fire@server', fire));
     row.appendChild(field('from', earliest));
     row.appendChild(field('to', latest));
+    row.appendChild(field('ideal', ideal));
     row.appendChild(field('players', players));
     row.appendChild(field('dry run', dry));
     row.appendChild(field('turbo', turbo));
@@ -972,7 +985,7 @@
     });
     help.innerHTML =
       '<b style="color:#5fff8f">How to use &mdash; just 4 steps:</b><br>' +
-      '<b>1.</b> Set <b>from</b>/<b>to</b> + <b>players</b>. Leave <b>fire@server</b> as-is. <b>dry&nbsp;run&nbsp;OFF</b> (tick <b>turbo</b> only for Black). &nbsp; ' +
+      '<b>1.</b> Set <b>from</b>/<b>to</b>, <b>ideal</b> time, <b>players</b>. Leave <b>fire@server</b> as-is. <b>dry&nbsp;run&nbsp;OFF</b> (tick <b>turbo</b> only for Black). &nbsp; ' +
       '<b>2.</b> Press <b>ARM</b> &mdash; it fires at 7:00 by itself. &nbsp; ' +
       '<b>3.</b> Keep this tab in front and <b>wait</b>.<br>' +
       '<b>4.</b> When the <b style="color:#c77dff">purple banner</b> appears &rarr; check your email, type the <b>6-digit code</b>, click <b>&ldquo;Book Time&rdquo;</b>.';
@@ -989,10 +1002,11 @@
   }
 
   function readUi() {
-    const f = $('#ttb-fire'), e = $('#ttb-earliest'), l = $('#ttb-latest'), p = $('#ttb-players'), d = $('#ttb-dry'), t = $('#ttb-turbo');
+    const f = $('#ttb-fire'), e = $('#ttb-earliest'), l = $('#ttb-latest'), i = $('#ttb-ideal'), p = $('#ttb-players'), d = $('#ttb-dry'), t = $('#ttb-turbo');
     if (f) CONFIG.fireTimeServer = f.value.trim();
     if (e) CONFIG.earliest = e.value.trim();
     if (l) CONFIG.latest = l.value.trim();
+    if (i) CONFIG.idealTime = i.value.trim();
     if (p) CONFIG.desiredPlayers = parseInt(p.value, 10) || 4;
     if (d) CONFIG.dryRun = d.checked;
     if (t) CONFIG.apiTurbo = t.checked;

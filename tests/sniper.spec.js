@@ -36,10 +36,11 @@ async function inject(page, botCfg = {}) {
 }
 
 async function armAndWaitFor(page, opts) {
-  const { fire, earliest = '5:00am', latest = '8:00pm', dry = false, endState = 'done', timeout = 25000 } = opts;
+  const { fire, earliest = '5:00am', latest = '8:00pm', ideal = '', dry = false, endState = 'done', timeout = 25000 } = opts;
   if (fire) await page.fill('#ttb-fire', fire);
   await page.fill('#ttb-earliest', earliest);
   await page.fill('#ttb-latest', latest);
+  await page.fill('#ttb-ideal', ideal); // default '' -> earliest, for deterministic assertions
   if (dry) await page.check('#ttb-dry');
   await page.click('#ttb-arm');
   await page.waitForFunction((s) => window.TTB.state.state === s, endState, { timeout });
@@ -182,6 +183,16 @@ test('syncs to a server clock 90s ahead and books at the server release moment',
   const st = await getState(request);
   expect(st.booked).toHaveLength(1);
   expect(st.booked[0].at).toBeGreaterThanOrEqual(st.releaseAtMs);
+});
+
+test('ideal time: grabs the open slot closest to it (not the earliest)', async ({ page, request }) => {
+  await configure(request, { releaseInMs: 1500 });
+  await inject(page);
+  await armAndWaitFor(page, { fire: fmtFire(Date.now() + 1000), earliest: '6:00am', latest: '6:00pm', ideal: '12:00pm' });
+
+  const st = await getState(request);
+  expect(st.booked).toHaveLength(1);
+  expect(st.booked[0].label).toBe('12:00pm'); // closest to noon, not 6:00am
 });
 
 test('respects the earliest/latest window', async ({ page, request }) => {

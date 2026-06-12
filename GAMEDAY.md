@@ -35,7 +35,10 @@ ready for that.
 ## 🕔 6:55 PM — arm it
 
 8. In the TTB bar:
-   - **`from` / `to`**: your time window, e.g. `6:00am` / `2:00pm`.
+   - **`from` / `to`**: your acceptable time window, e.g. `6:00am` / `2:00pm`.
+   - **`ideal`**: the time you'd most like (default `12:00pm`) — the bot grabs
+     the open slot *closest* to it within your window. Clear it to take the
+     earliest instead.
    - **`players`**: how many (default 4).
    - **`fire@server`**: leave it at **`18:59:59.0`** (already correct).
    - **`turbo`**: tick it **only if you're going for Black**.
