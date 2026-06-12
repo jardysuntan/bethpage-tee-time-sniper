@@ -71,33 +71,47 @@
     maxFailsPerSlot: 2,            // give up on a slot after this many errors
     dryRun: false,                 // [UI] stop one click short of booking
 
-    // --- selectors ---
-    // Clicking the "18 holes" filter makes ForeUp re-query times.
-    searchClickSelectors: ['a.btn.btn-primary[data-value="18"]', 'a.btn[data-value="18"]'],
-    tileSelector: 'div.time.time-tile, li.time-legacy, .time.time-tile',
-    tileTimeLabelSelector: '.booking-start-time-label',
-    modalSelectors: ['#book_time', '.booking-modal', '.modal.in', '.modal.show', '[role="dialog"]'],
-    playerRowSelectors: ['.js-booking-players-row', '#book_time'],
+    // --- selectors (verified against the LIVE Bethpage/ForeUp page, Jun 2026) ---
+    // Clicking the "18 holes" filter makes ForeUp re-query times. NOTE: on
+    // Bethpage the default-active holes filter is "Both" (data-value="all"),
+    // so clicking [data-value="18"] both filters to 18 AND forces a refetch.
+    searchClickSelectors: ['a.btn[data-value="18"]', 'a.btn.btn-primary[data-value="18"]'],
+    // ForeUp also re-queries when the SELECTED day is re-clicked - used as a
+    // backup refresh trigger so the search loop never stalls on a no-op click.
+    refreshClickSelectors: ['.datepicker td.day.active', '.datepicker td.today', '.datepicker .day.active'],
+    // Tile discovery is label-driven (climb from the time text to the card),
+    // so we don't depend on the exact card class.
+    tileTimeLabelSelector: '.booking-start-time-label, h4.start',
+    tileSelector: 'div.time.time-tile, .reserve-time, li.time-legacy, [class*="time-tile"], .time',
+    modalSelectors: ['#book_time', '.time-details', '.modal.in', '.modal.show', '[role="dialog"]', '.booking-modal'],
+    playerRowSelectors: ['.players', '.js-booking-players-row', '#book_time', '.time-details'],
+    // The final submit button lives in the booking modal's footer. Verified
+    // selectors plus text fallbacks (modal title is also "Book Time", so the
+    // text match is scoped to buttons only by findBookButton).
     bookButtonSelectors: [
       '#book_time .modal-footer .js-book-button',
+      '#book_time .modal-footer button.btn-success',
+      '.time-details .modal-footer button.btn-success',
       '.js-book-button',
       'button[data-loading-text="Booking time..."]',
       'button[data-loading-text="Booking tee time..."]',
       'button.book-time-button',
     ],
-    bookButtonTextPattern: /\bbook (?:time|tee time)\b|\bbook\b/i,
-    closeButtonSelectors: ['#book_time [data-dismiss="modal"]', '[data-dismiss="modal"]', '.modal .close', 'button.cancel'],
+    bookButtonTextPattern: /\bbook (?:time|tee time)\b|\breserve\b|\bconfirm\b|\bbook\b/i,
+    closeButtonSelectors: ['#book_time [data-dismiss="modal"]', '.time-details [data-dismiss="modal"]', '[data-dismiss="modal"]', '.modal .close', 'button.cancel'],
 
     // Error/success scanning is SCOPED to dedicated alert containers (NOT the
     // whole modal body) so benign page text like "...error, call the pro
-    // shop" can never abort a good attempt.
-    errorSelectors: ['.alert-danger', '.alert.alert-danger', '.growl-danger', '.growl-error', '.toast-error', '[role="alert"].alert-danger'],
-    successSelectors: ['.js-booking-confirmation', '.alert-success', '.alert.alert-success'],
+    // shop" can never abort a good attempt. #booking-error is the modal's own
+    // error box (display:none until populated).
+    errorSelectors: ['#booking-error', '.alert-danger', '.alert.alert-danger', '.growl-danger', '.growl-error', '.toast-error', '[role="alert"].alert-danger'],
+    successSelectors: ['.js-booking-confirmation', '.alert-success', '.alert.alert-success', '.booking-confirmation'],
     errorTextPattern: /no longer available|not available|unavailable|has expired|expired|sold out|already have (?:a |an )?(?:pending )?reservation|pending reservation|could not be (?:completed|booked|made)|unable to|please try again|something went wrong/i,
     successTextPattern: /\bbooked\b|reservation (?:has been|was|is) (?:made|booked|confirmed)|successfully booked|will be held|is confirmed/i,
 
-    // Human-gate detection (the 2FA the bot must NOT bypass).
-    captchaSelectors: ['#book_time #recaptcha', '.g-recaptcha', 'iframe[src*="recaptcha"]', 'iframe[title*="recaptcha" i]'],
+    // Human-gate detection (the 2FA the bot must NOT bypass). #payment-captcha
+    // is Bethpage's body-level reCAPTCHA host (empty until the payment step).
+    captchaSelectors: ['#payment-captcha', '#book_time #recaptcha', '.g-recaptcha', 'iframe[src*="recaptcha"]', 'iframe[title*="recaptcha" i]'],
     bookingCodeSelectors: [
       'input[name="reservation_confirmation_uid"]',
       'input[name*="confirmation_uid"]',
@@ -439,55 +453,68 @@
   function searchTick() {
     if (S.state !== 'searching') return;
     if (maybeAttack()) return;
+    // Primary refresh: click the holes filter (forces a refetch + filters to
+    // 18). Backup: re-click the selected day, which also re-queries times -
+    // this keeps the loop refetching even after the holes filter is already 18.
     let clicked = false;
     for (const sel of CONFIG.searchClickSelectors) {
       const el = document.querySelector(sel);
       if (el) { realClick(el); clicked = true; break; }
     }
-    if (!clicked) warnOnce('Search control not found (' + CONFIG.searchClickSelectors.join(' , ') + ') - fix CONFIG.searchClickSelectors!');
-    if (clicked) {
-      S.searchClicks++;
-      if (S.searchClicks <= 3 || S.searchClicks % 10 === 0) log('searching… attempt ' + S.searchClicks + ' (+' + sinceFire() + ')');
+    if (S.searchClicks % 2 === 1) {
+      for (const sel of CONFIG.refreshClickSelectors) {
+        const el = document.querySelector(sel);
+        if (el && !/disabled/.test(el.className)) { realClick(el); clicked = true; break; }
+      }
     }
+    if (!clicked) warnOnce('No search/refresh control found - check CONFIG.searchClickSelectors / refreshClickSelectors!');
+    S.searchClicks++;
+    if (S.searchClicks <= 3 || S.searchClicks % 10 === 0) log('searching… attempt ' + S.searchClicks + ' (+' + sinceFire() + ')');
   }
 
   function tileSpots(el) {
+    const span = el.querySelector('.spots .spots, span.spots');
+    if (span) { const n = parseInt(textOf(span), 10); if (Number.isInteger(n)) return n; }
     const m = textOf(el).match(/(\d+)\s*(?:player|spot|golfer)/i);
     return m ? parseInt(m[1], 10) : null;
+  }
+
+  // Tile discovery is label-driven: find each visible time label, then climb
+  // to its clickable card. Robust to the exact card class (ForeUp click
+  // handlers are delegated, so clicking the card - or the label - books it).
+  function timeLabelNodes() { return document.querySelectorAll(CONFIG.tileTimeLabelSelector); }
+
+  function cardFor(labelEl) {
+    return labelEl.closest(CONFIG.tileSelector) || labelEl.closest('a[href], li, tr, .reserve-time') || labelEl.parentElement || labelEl;
   }
 
   function candidates() {
     const lo = parseAmPm(CONFIG.earliest);
     const hi = parseAmPm(CONFIG.latest);
     const out = [];
-    for (const el of document.querySelectorAll(CONFIG.tileSelector)) {
-      if (!visible(el)) continue;
-      const label = textOf(el.querySelector(CONFIG.tileTimeLabelSelector)) || labelFromTile(el);
+    const seen = new Set();
+    for (const lab of timeLabelNodes()) {
+      if (!visible(lab)) continue;
+      const label = textOf(lab);
       const mins = parseAmPm(label);
       if (mins == null) continue;
       if (lo != null && mins < lo) continue;
       if (hi != null && mins > hi) continue;
       if ((S.failCounts.get(label) || 0) >= CONFIG.maxFailsPerSlot) continue;
-      const spots = tileSpots(el);
+      const card = cardFor(lab);
+      if (seen.has(card)) continue;
+      seen.add(card);
+      const spots = tileSpots(card);
       if (spots != null && spots < CONFIG.minPlayers) continue;
-      out.push({ el: el, label: label, mins: mins });
+      out.push({ el: card, label: label, mins: mins });
     }
     out.sort(function (a, b) { return CONFIG.preference === 'latest' ? b.mins - a.mins : a.mins - b.mins; });
     return out;
   }
 
-  // Fallback if the dedicated label node isn't found: read the first time
-  // token out of the tile's own text.
-  function labelFromTile(el) {
-    const m = textOf(el).match(/\b\d{1,2}:\d{2}\s*[ap]\.?\s*m?\.?/i);
-    return m ? m[0] : '';
-  }
-
   function findTileByLabel(label) {
-    for (const el of document.querySelectorAll(CONFIG.tileSelector)) {
-      if (!visible(el)) continue;
-      const l = textOf(el.querySelector(CONFIG.tileTimeLabelSelector)) || labelFromTile(el);
-      if (l === label) return el;
+    for (const lab of timeLabelNodes()) {
+      if (visible(lab) && textOf(lab) === label) return cardFor(lab);
     }
     return null;
   }
