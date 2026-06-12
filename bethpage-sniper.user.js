@@ -166,6 +166,7 @@
     failCounts: new Map(),
     clockOffsetMs: 0,       // serverNow = Date.now() + clockOffsetMs
     clockUncertainty: null,
+    rttMs: null,            // measured round-trip time, from the clock sync
     clockSynced: false,
     syncing: false,
     testDryRun: false,      // transient: set only by the TEST button, never sticky
@@ -421,8 +422,9 @@
         S.clockUncertainty = Math.round(first.rtt / 2 + 500);
       }
       S.clockSynced = true;
+      S.rttMs = Math.round((tick || first).rtt);
       log('Server clock offset: ' + (S.clockOffsetMs >= 0 ? '+' : '') + Math.round(S.clockOffsetMs) +
-        ' ms (±' + S.clockUncertainty + ' ms, rtt ' + Math.round((tick || first).rtt) + ' ms)');
+        ' ms (±' + S.clockUncertainty + ' ms, rtt ' + S.rttMs + ' ms)');
       if (S.state === 'armed') {
         const f = computeFireAt();
         if (f && Math.abs(f.fireAtLocal - S.fireAtLocal) < 6 * 3600 * 1000) {
@@ -544,7 +546,15 @@
     if (document.hidden) log('THIS TAB IS IN THE BACKGROUND - timers are throttled. CLICK INTO THIS TAB NOW.', 'err');
     try { tileObserver.observe(document.body, { childList: true, subtree: true }); } catch (e) { /* ignore */ }
     searchTick();
-    S.searchInterval = setInterval(searchTick, CONFIG.searchEveryMs);
+    // Adaptive interval: never re-click the refresh faster than a round-trip,
+    // so a slow/laggy connection can't stack up overlapping refetches (per the
+    // original author's note). On a normal link (RTT well under 350ms) this
+    // just stays at searchEveryMs. Detection isn't hurt - the MutationObserver
+    // grabs tiles from whichever request renders them, and turbo polls
+    // separately - so this only trims redundant clicks, never speed.
+    const period = Math.max(CONFIG.searchEveryMs, Math.round(1.3 * (S.rttMs || 0)));
+    if (period > CONFIG.searchEveryMs) log('High latency (rtt ' + S.rttMs + 'ms): widening refresh interval to ' + period + 'ms to avoid redundant clicks.', 'warn');
+    S.searchInterval = setInterval(searchTick, period);
     startApiPoll();
     later(function backstop() {
       if (S.state === 'searching' || S.state === 'attempting') {
