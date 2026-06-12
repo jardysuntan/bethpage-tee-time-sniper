@@ -1136,6 +1136,8 @@
     S.gen++;
     stopLoops();
     if (S.uiInterval) clearInterval(S.uiInterval);
+    if (S.titleFlasher) { clearInterval(S.titleFlasher); S.titleFlasher = null; }
+    if (S.origTitle != null) document.title = S.origTitle;
     const r = document.getElementById('ttb-root');
     if (r) r.remove();
   };
@@ -1166,8 +1168,21 @@
   log('Bethpage Tee-Time Sniper v2.1 loaded. Set times, then ARM (or TEST for a dry run).', 'big');
   selfCheck();
   S.uiInterval = setInterval(uiTick, 100);
+  // Backgrounding the tab is the #1 cause of a missed release: Chrome suspends
+  // the page so the times render seconds late. Warn LOUDLY - and flip the tab
+  // TITLE so you see it even when you've clicked away to another tab/app.
+  S.origTitle = document.title;
   document.addEventListener('visibilitychange', function () {
-    if (document.hidden && (S.state === 'armed' || isLive())) log('Tab went to the BACKGROUND - timers throttle. Come back to this tab!', 'err');
+    if (document.hidden && (S.state === 'armed' || isLive())) {
+      log('TAB IS IN THE BACKGROUND - the page slows down and you can MISS 7:00. Click back to this tab NOW.', 'err');
+      if (!S.titleFlasher) {
+        let on = false;
+        S.titleFlasher = setInterval(function () { on = !on; document.title = on ? '⚠️ COME BACK TO TTB ⚠️' : '🔴 TEE-TIME TAB - RETURN'; }, 700);
+      }
+    } else if (!document.hidden) {
+      if (S.titleFlasher) { clearInterval(S.titleFlasher); S.titleFlasher = null; }
+      document.title = S.origTitle;
+    }
   });
   syncClock();
 })();
