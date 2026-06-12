@@ -126,6 +126,7 @@ test('falls back to the next tile when the first is sniped', async ({ page, requ
   const st = await getState(request);
   expect(st.booked).toHaveLength(1);
   expect(st.booked[0].label).toBe(times[1]);
+  expect(st.counters.hold).toBeLessThanOrEqual(2); // didn't waste a retry on the gone first slot
   const log = await botLog(page);
   expect(log).toContain('no longer available');
   expect(log).toContain('BOOKED ' + times[1]);

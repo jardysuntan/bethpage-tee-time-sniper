@@ -138,6 +138,9 @@
     errorSelectors: ['#booking-error', '.alert-danger', '.alert.alert-danger', '.growl-danger', '.growl-error', '.toast-error', '[role="alert"].alert-danger'],
     successSelectors: ['.js-booking-confirmation', '.alert-success', '.alert.alert-success', '.booking-confirmation'],
     errorTextPattern: /no longer available|not available|unavailable|has expired|expired|sold out|already have (?:a |an )?(?:pending )?reservation|pending reservation|could not be (?:completed|booked|made)|unable to|please try again|something went wrong/i,
+    // A slot that comes back with one of these is GONE for good during the rush -
+    // never retry it, just move on and scan for an open one.
+    goneTextPattern: /no longer available|not available|unavailable|sold out|already (?:booked|taken|reserved)/i,
     successTextPattern: /\bbooked\b|reservation (?:has been|was|is) (?:made|booked|confirmed)|successfully booked|will be held|is confirmed/i,
 
     // Human-gate detection (the 2FA the bot must NOT bypass). #payment-captcha
@@ -885,7 +888,10 @@
   async function failAttempt(cand, why, gen) {
     if (gen !== S.gen) return;
     log('x ' + cand.label + ': ' + why, 'warn');
-    S.failCounts.set(cand.label, (S.failCounts.get(cand.label) || 0) + 1);
+    // If the slot is definitively gone, don't waste a retry on it - mark it
+    // burned so candidates() skips it and we scan twice as many open slots.
+    const gone = CONFIG.goneTextPattern.test(why || '');
+    S.failCounts.set(cand.label, gone ? CONFIG.maxFailsPerSlot : (S.failCounts.get(cand.label) || 0) + 1);
     closeAnyModal();
     await sleep(180);
     if (!current(gen) || (S.state !== 'attempting' && S.state !== 'booking')) return;
