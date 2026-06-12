@@ -143,16 +143,19 @@ test('hands off (never books) when a CAPTCHA gates the booking window', async ({
   expect(await botLog(page)).toContain('SLOT HELD');
 });
 
-test('hands off for the emailed one-time code after clicking Book', async ({ page, request }) => {
-  await configure(request, { releaseInMs: 1500, codeAfterBook: true });
+test('hands off at the emailed-code field (real Bethpage flow), never clicking Book', async ({ page, request }) => {
+  // The code field is present in the modal from open. The bot fills players,
+  // sees the code field, and hands off WITHOUT clicking Book (which needs the
+  // human's code) - while keeping the slot held.
+  await configure(request, { releaseInMs: 1500, requireCode: true });
   await inject(page);
   await armAndWaitFor(page, { fire: fmtFire(Date.now() + 1000), earliest: '6:00am', latest: '6:00pm', endState: 'handoff' });
 
   const st = await getState(request);
   expect(st.booked).toHaveLength(0);
-  expect(st.counters.reserve).toBe(1);   // it clicked Book (which triggers the email)...
-  expect(st.hold).not.toBeNull();        // ...and holds while the human types the code
-  expect(await botLog(page)).toContain('ENTER THE ONE-TIME CODE');
+  expect(st.counters.reserve).toBe(0);   // never clicked Book - waits for the human
+  expect(st.hold).not.toBeNull();        // but holds the slot
+  expect(await botLog(page)).toContain('6-DIGIT CODE');
 });
 
 test('syncs to a server clock 90s ahead and books at the server release moment', async ({ page, request }) => {

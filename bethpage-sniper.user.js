@@ -80,9 +80,11 @@
     // backup refresh trigger so the search loop never stalls on a no-op click.
     refreshClickSelectors: ['.datepicker td.day.active', '.datepicker td.today', '.datepicker .day.active'],
     // Tile discovery is label-driven (climb from the time text to the card),
-    // so we don't depend on the exact card class.
+    // so we don't depend on the exact card class. On Bethpage the live card is
+    // .booking-start-time-label -> .time-summary-left-top -> .time-summary ->
+    // .js-summary (the delegated click target); clicking the card bubbles to it.
     tileTimeLabelSelector: '.booking-start-time-label, h4.start',
-    tileSelector: 'div.time.time-tile, .reserve-time, li.time-legacy, [class*="time-tile"], .time',
+    tileSelector: '.js-summary, .time-summary, div.time.time-tile, .reserve-time, li.time-legacy, [class*="time-tile"], .time',
     modalSelectors: ['#book_time', '.time-details', '.modal.in', '.modal.show', '[role="dialog"]', '.booking-modal'],
     playerRowSelectors: ['.players', '.js-booking-players-row', '#book_time', '.time-details'],
     // The final submit button lives in the booking modal's footer. Verified
@@ -594,9 +596,13 @@
 
   // The 2FA the bot must NOT bypass. Returns 'captcha' | 'code' | null.
   function detectHumanGate(modal) {
+    // Bethpage's body-level reCAPTCHA host: populated (even if briefly hidden)
+    // means a captcha is in play.
+    const pc = document.getElementById('payment-captcha');
+    if (pc && (pc.childElementCount > 0 || visible(pc))) return 'captcha';
     for (const sel of CONFIG.captchaSelectors) {
       const e = (modal && modal.querySelector(sel)) || document.querySelector(sel);
-      if (e && visible(e)) return 'captcha';
+      if (e && e.id !== 'payment-captcha' && visible(e)) return 'captcha';
     }
     for (const sel of CONFIG.bookingCodeSelectors) {
       const e = (modal && modal.querySelector(sel)) || document.querySelector(sel);
@@ -780,8 +786,8 @@
     stopLoops();
     setState('handoff');
     const what = kind === 'captcha'
-      ? (preBook ? 'SOLVE THE CAPTCHA, then click Book Time, then enter the emailed code' : 'SOLVE THE CAPTCHA and enter the emailed code')
-      : 'ENTER THE ONE-TIME CODE FROM YOUR EMAIL';
+      ? (preBook ? 'SOLVE THE CAPTCHA, then enter the emailed code and click "Book Time"' : 'SOLVE THE CAPTCHA and enter the emailed code')
+      : 'ENTER THE 6-DIGIT CODE FROM YOUR EMAIL, then click "Book Time"';
     log('SLOT HELD: ' + cand.label + ' (+' + sinceFire() + '). ' + what + ' - the booking window is open and waiting.', 'big');
     banner('✅ SLOT HELD: ' + cand.label + '\n' + what, '#7a00cc');
   }
